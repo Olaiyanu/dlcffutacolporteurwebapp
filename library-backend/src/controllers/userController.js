@@ -203,7 +203,6 @@ const getUsers = async (req, res) => {
     }
 };
 
-// New endpoint for HTML table view
 const getUsersTable = async (req, res) => {
     try {
         const users = getAllUsers();
@@ -446,6 +445,52 @@ const getUsersTable = async (req, res) => {
     }
 };
 
+// Check if email or phone already exists (for frontend validation)
+const checkDuplicateUser = async (req, res) => {
+    try {
+        const { email, phone } = req.query;
+
+        if (!email && !phone) {
+            return res.status(400).json({
+                success: false,
+                error: 'Email or phone parameter is required'
+            });
+        }
+
+        let emailExists = false;
+        let phoneExists = false;
+
+        if (email) {
+            emailExists = checkEmailExists(email);
+        }
+
+        if (phone) {
+            phoneExists = checkPhoneExists(phone);
+        }
+
+        const duplicates = [];
+        if (emailExists) duplicates.push('email');
+        if (phoneExists) duplicates.push('phone');
+
+        res.status(200).json({
+            success: true,
+            available: duplicates.length === 0,
+            duplicates: duplicates,
+            message: duplicates.length === 0 ?
+                'Email and phone are available for registration' :
+                `${duplicates.join(' and ')} ${duplicates.length === 1 ? 'is' : 'are'} already registered`
+        });
+
+    } catch (err) {
+        console.error('Error checking duplicate user:', err.message);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to check user availability',
+            details: err.message
+        });
+    }
+};
+
 const downloadUsersExcel = async (req, res) => {
     try {
         const fs = require('fs');
@@ -480,5 +525,6 @@ module.exports = {
     completeRegistration,
     getUsers, 
     getUsersTable,
+    checkDuplicateUser,
     downloadUsersExcel 
 };

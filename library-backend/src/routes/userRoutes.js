@@ -6,6 +6,7 @@ const {
     completeRegistration,
     getUsers, 
     getUsersTable,
+    checkDuplicateUser,
     downloadUsersExcel 
 } = require('../controllers/userController');
 
@@ -20,6 +21,9 @@ router.post('/verify-otp', verifyUserOTP);
 
 // Step 3: Complete registration after OTP verification
 router.post('/complete-registration', completeRegistration);
+
+// Check if email/phone already exists (for frontend validation)
+router.get('/check-duplicate', checkDuplicateUser);
 
 // Legacy endpoint (deprecated)
 router.post('/register', registerUser);
