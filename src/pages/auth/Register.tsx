@@ -30,25 +30,21 @@ const Register = () => {
         await logout();
       }
 
-      // 2. Send email notification to Admin using Web3Forms
-      const response = await fetch("https://api.web3forms.com/submit", {
+      // 2. Generate library card and send email notification using your Node.js backend
+      const response = await fetch("http://localhost:5000/api/users/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Accept: "application/json",
         },
         body: JSON.stringify({
-          access_key: "1023ade0-e63a-4db0-9dd7-08286ed093eb",
-          subject: "New Registration: " + name,
-          from_name: "DLCF Library System",
-          name: name,
-          email: email,
-          phone: phone,
-          message: "A new member has joined the DLCF FUTA Library.",
+          name,
+          email,
+          phone
         }),
       });
 
-      if (!response.ok) throw new Error("Failed to send email");
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Failed to generate library card");
 
       toast({ title: "Welcome!", description: "Account created successfully." });
       setShowSuccess(true);
