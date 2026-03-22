@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -14,12 +14,10 @@ const Register = () => {
     phone: ""
   });
   const [password, setPassword] = useState("");
-  const [step, setStep] = useState(1); // 1: Form, 2: OTP, 3: Success
-  const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
-  const [duplicateErrors, setDuplicateErrors] = useState({ email: false, phone: false });
   const [showDuplicatePopup, setShowDuplicatePopup] = useState(false);
   const [duplicateMessage, setDuplicateMessage] = useState("");
+  const [showSuccess, setShowSuccess] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { register, logout } = useAuth();
@@ -29,7 +27,7 @@ const Register = () => {
 
   // Check for duplicates
   const checkDuplicate = async (field: 'email' | 'phone', value: string) => {
-    if (!value.trim()) return;
+    if (!value.trim()) return false;
 
     try {
       const params = new URLSearchParams();
@@ -38,48 +36,19 @@ const Register = () => {
       const response = await fetch(`${API_BASE_URL}/users/check-duplicate?${params}`);
       const data = await response.json();
 
-      if (!data.available) {
-        const fieldName = field === 'email' ? 'Email' : 'Phone number';
-        setDuplicateMessage(`${fieldName} is already registered. Please use a different ${field}.`);
-        setShowDuplicatePopup(true);
-        setDuplicateErrors(prev => ({ ...prev, [field]: true }));
-        return false;
-      } else {
-        setDuplicateErrors(prev => ({ ...prev, [field]: false }));
-        return true;
-      }
+      return !data.available; // Return true if duplicate found
     } catch (error) {
       console.error('Error checking duplicates:', error);
-      return true; // Allow if check fails
+      return false; // Allow registration if check fails
     }
   };
 
-  // Handle input changes with duplicate checking
-  const handleInputChange = async (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-
-    // Clear duplicate error for this field
-    if (duplicateErrors[field as keyof typeof duplicateErrors]) {
-      setDuplicateErrors(prev => ({ ...prev, [field]: false }));
-    }
-
-    // Check for duplicates on blur (when user finishes typing)
-    if (field === 'email' || field === 'phone') {
-      // Debounce the check
-      setTimeout(() => {
-        if (value.trim() && formData[field as keyof typeof formData] === value) {
-          checkDuplicate(field as 'email' | 'phone', value);
-        }
-      }, 1000);
-    }
-  };
-
-  // Step 1: Send OTP
-  const handleSendOTP = async (e: React.FormEvent) => {
+  // Handle form submission
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Validate all fields
-    if (!formData.name || !formData.email || !formData.phone) {
+    if (!formData.name || !formData.email || !formData.phone || !password) {
       toast({
         title: "Missing Information",
         description: "Please fill in all fields.",
@@ -88,107 +57,34 @@ const Register = () => {
       return;
     }
 
-    // Check for duplicates before sending OTP
-    const emailAvailable = await checkDuplicate('email', formData.email);
-    const phoneAvailable = await checkDuplicate('phone', formData.phone);
-
-    if (!emailAvailable || !phoneAvailable) {
-      return; // Stop if duplicates found
-    }
-
     setLoading(true);
+
     try {
-      const response = await fetch(`${API_BASE_URL}/users/send-otp`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        if (response.status === 400 && result.error.includes('already registered')) {
-          setDuplicateMessage(result.error);
-          setShowDuplicatePopup(true);
-          return;
-        }
-        throw new Error(result.error || "Failed to send OTP");
+      // Check for email duplicate
+      const emailDuplicate = await checkDuplicate('email', formData.email);
+      if (emailDuplicate) {
+        setDuplicateMessage("This email has already been registered. Please use a different email address.");
+        setShowDuplicatePopup(true);
+        return;
       }
 
-      toast({
-        title: "OTP Sent!",
-        description: "Check your email for the verification code.",
-      });
-      setStep(2); // Move to OTP step
-
-    } catch (error: any) {
-      console.error("OTP Error:", error);
-      toast({
-        title: "Failed to send OTP",
-        description: error.message || "Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Step 2: Verify OTP
-  const handleVerifyOTP = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!otp.trim()) {
-      toast({
-        title: "OTP Required",
-        description: "Please enter the verification code.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/users/verify-otp`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: formData.email,
-          otp: otp.trim()
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || "Invalid OTP");
+      // Check for phone duplicate
+      const phoneDuplicate = await checkDuplicate('phone', formData.phone);
+      if (phoneDuplicate) {
+        setDuplicateMessage("This phone number has already been registered. Please use a different phone number.");
+        setShowDuplicatePopup(true);
+        return;
       }
 
-      // OTP verified, now complete registration
-      await completeRegistration();
-
-    } catch (error: any) {
-      console.error("OTP Verification Error:", error);
-      toast({
-        title: "Verification Failed",
-        description: error.message || "Invalid OTP code.",
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Step 3: Complete registration
-  const completeRegistration = async () => {
-    try {
-      // Register locally first
+      // No duplicates found, proceed with registration
       await register(formData.name, formData.email, password);
 
-      // Complete backend registration
+      // Log out user until approved
+      if (logout) {
+        await logout();
+      }
+
+      // Send library card email
       const response = await fetch(`${API_BASE_URL}/users/complete-registration`, {
         method: "POST",
         headers: {
@@ -198,26 +94,149 @@ const Register = () => {
       });
 
       const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to complete registration");
-      }
-
-      // Log out user until approved
-      if (logout) {
-        await logout();
-      }
+      if (!response.ok) throw new Error(result.error || "Failed to send library card");
 
       toast({
-        title: "Registration Complete!",
+        title: "Registration Successful!",
         description: "Your library card has been sent to your email.",
       });
 
-      setStep(3); // Success step
+      setShowSuccess(true);
 
     } catch (error: any) {
       console.error("Registration Error:", error);
       toast({
+        title: "Registration Failed",
+        description: error.message || "Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Close duplicate popup
+  const closeDuplicatePopup = () => {
+    setShowDuplicatePopup(false);
+    setDuplicateMessage("");
+  };
+
+  return (
+    <>
+      <div className={`container flex min-h-[70vh] items-center justify-center py-12 transition-all duration-300 ${showSuccess ? 'blur-sm pointer-events-none select-none' : ''}`}>
+        <div className="w-full max-w-md">
+          <div className="mb-8 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary">
+              <BookOpen className="h-7 w-7 text-primary-foreground" />
+            </div>
+            <h1 className="font-display text-2xl font-bold text-foreground">Join the Fellowship</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Create your DLCF account</p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-border bg-card p-6 shadow-sm">
+            <div className="space-y-2">
+              <Label htmlFor="name">Full Name</Label>
+              <Input
+                id="name"
+                placeholder="Grace Adeola"
+                value={formData.name}
+                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={formData.email}
+                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone Number</Label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="08012345678"
+                value={formData.phone}
+                onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating Account...
+                </>
+              ) : (
+                "Create Account"
+              )}
+            </Button>
+          </form>
+
+          <p className="mt-4 text-center text-sm text-muted-foreground">
+            Already have an account?{" "}
+            <Link to="/auth/login" className="font-medium text-primary hover:underline">Sign In</Link>
+          </p>
+        </div>
+      </div>
+
+      {/* Success Message */}
+      {showSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-8 text-center shadow-2xl">
+            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+              <CheckCircle className="h-8 w-8 text-primary" />
+            </div>
+            <h3 className="text-lg font-semibold">Welcome to DLCF Library!</h3>
+            <p className="text-sm text-muted-foreground mt-2">
+              Your account has been created successfully. Your library card has been sent to your email.
+              Please wait for admin approval to access your account.
+            </p>
+            <Button onClick={() => navigate('/auth/login')} className="w-full mt-6">
+              Go to Login
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Registration Popup */}
+      {showDuplicatePopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-xl border border-red-200 bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
+                <AlertCircle className="h-5 w-5 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-red-900">Registration Error</h3>
+            </div>
+            <p className="mb-6 text-red-700">{duplicateMessage}</p>
+            <Button onClick={closeDuplicatePopup} className="w-full bg-red-600 hover:bg-red-700">
+              Try Different Details
+            </Button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+export default Register;
         title: "Registration Failed",
         description: error.message || "Please try again.",
         variant: "destructive"
