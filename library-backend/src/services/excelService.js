@@ -19,7 +19,7 @@ const saveUserToExcel = (user) => {
             // Create a new workbook and worksheet if it doesn't exist
             workbook = xlsx.utils.book_new();
             // Initialize with headers (First row)
-            const headers = [['Name', 'Email', 'Phone', 'Registration Date']];
+            const headers = [['Name', 'Email', 'Phone', 'Registration Date', 'Verified', 'Verification Date']];
             worksheet = xlsx.utils.aoa_to_sheet(headers);
             xlsx.utils.book_append_sheet(workbook, worksheet, 'Users');
         }
@@ -32,7 +32,9 @@ const saveUserToExcel = (user) => {
             Name: user.name,
             Email: user.email,
             Phone: user.phone || 'N/A',
-            'Registration Date': new Date().toLocaleString()
+            'Registration Date': new Date().toLocaleString(),
+            Verified: 'Yes',
+            'Verification Date': new Date().toLocaleString()
         });
 
         // 4. Convert the JSON array back to an Excel worksheet

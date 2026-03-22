@@ -1,29 +1,145 @@
-const { userValidationSchema } = require('../utils/validation');
+const { userValidationSchema, checkEmailExists, checkPhoneExists } = require('../utils/validation');
 const { generateLibraryCard } = require('../services/pdfService');
 const { sendLibraryCardEmail } = require('../services/emailService');
 const { saveUserToExcel, getAllUsers } = require('../services/excelService');
+const { generateOTP, saveOTP, verifyOTP, deleteOTP } = require('../services/otpService');
+const nodemailer = require('nodemailer');
 
+// Initialize email transporter (same as in emailService)
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+    }
+});
 
-const registerUser = async (req, res) => {
+// Step 1: Send OTP to email and phone
+const sendOTP = async (req, res) => {
     try {
-        // 1 & 2: Collect & Validate User Information
+        const { name, email, phone } = req.body;
+
+        // Validate input
+        if (!name || !email || !phone) {
+            return res.status(400).json({ error: 'Name, email, and phone are required' });
+        }
+
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({ error: 'Invalid email format' });
+        }
+
+        // Check if email already exists
+        if (checkEmailExists(email)) {
+            return res.status(400).json({ error: 'Email is already registered' });
+        }
+
+        // Check if phone already exists
+        if (checkPhoneExists(phone)) {
+            return res.status(400).json({ error: 'Phone number is already registered' });
+        }
+
+        // Generate OTP
+        const otp = generateOTP();
+        console.log(`Generated OTP for ${email}: ${otp}`);
+
+        // Save OTP to storage
+        saveOTP(email, phone, otp);
+
+        // Send OTP via email
+        await transporter.sendMail({
+            from: process.env.EMAIL_USER,
+            to: email,
+            subject: 'DLCF Library - Email Verification',
+            html: `
+                <h2>Email Verification</h2>
+                <p>Dear ${name},</p>
+                <p>Your OTP for DLCF Library registration is:</p>
+                <h3 style="color: #007bff; font-size: 24px;">${otp}</h3>
+                <p>This OTP will expire in 10 minutes.</p>
+                <p>Do not share this OTP with anyone.</p>
+                <p>Best regards,<br/>DLCF Library Team</p>
+            `
+        });
+
+        console.log(`OTP sent to email: ${email}`);
+
+        res.status(200).json({ 
+            message: 'OTP has been sent to your email. Please verify to complete registration.',
+            email: email
+        });
+
+    } catch (err) {
+        console.error('Error sending OTP:', err.message);
+        res.status(500).json({ 
+            error: err.message || 'Failed to send OTP'
+        });
+    }
+};
+
+// Step 2: Verify OTP
+const verifyUserOTP = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+
+        if (!email || !otp) {
+            return res.status(400).json({ error: 'Email and OTP are required' });
+        }
+
+        // Verify OTP
+        const result = verifyOTP(email, otp);
+
+        if (!result.valid) {
+            return res.status(400).json({ error: result.message });
+        }
+
+        res.status(200).json({ 
+            message: 'OTP verified successfully',
+            verified: true,
+            phone: result.phone
+        });
+
+    } catch (err) {
+        console.error('Error verifying OTP:', err.message);
+        res.status(500).json({ 
+            error: err.message || 'Failed to verify OTP'
+        });
+    }
+};
+
+// Step 3: Complete registration after OTP verification
+const completeRegistration = async (req, res) => {
+    try {
+        // Validate input
         const { error, value } = userValidationSchema.validate(req.body);
         if (error) {
             return res.status(400).json({ error: error.details[0].message });
         }
 
-        const user = value; // Validated data
+        const user = value;
 
-        // 3: Automatically Generate the Library Card (Returns a Buffer)
+        // Check if email and phone are not already registered (extra safety check)
+        if (checkEmailExists(user.email)) {
+            return res.status(400).json({ error: 'Email is already registered' });
+        }
+
+        if (checkPhoneExists(user.phone)) {
+            return res.status(400).json({ error: 'Phone number is already registered' });
+        }
+
+        // Automatically Generate the Library Card
         const pdfBuffer = await generateLibraryCard(user);
 
-        // 4: Send the Card via Email
+        // Send the Card via Email
         await sendLibraryCardEmail(user, pdfBuffer);
 
-        // 5: Save user data to Excel
+        // Save user data to Excel
         await saveUserToExcel(user);
 
-        // Send success response back to frontend
+        // Clean up OTP
+        deleteOTP(user.email);
+
         res.status(201).json({ 
             message: 'User registered successfully and library card sent!' 
         });
@@ -32,19 +148,23 @@ const registerUser = async (req, res) => {
         console.error('Error during registration process:', err.message);
         console.error('Full error:', err);
         
-        // Send more detailed error message
         res.status(500).json({ 
             error: err.message || 'An internal server error occurred.'
         });
     }
 };
 
+// Legacy endpoint - now disabled
+const registerUser = async (req, res) => {
+    return res.status(400).json({ 
+        error: 'This endpoint is deprecated. Use the new OTP verification flow: /api/users/send-otp -> /api/users/verify-otp -> /api/users/complete-registration'
+    });
+};
+
 const getUsers = async (req, res) => {
     try {
-        // Get all users from Excel file
         const users = getAllUsers();
 
-        // Send success response with user data
         res.status(200).json({ 
             success: true,
             count: users.length,
@@ -66,16 +186,13 @@ const downloadUsersExcel = async (req, res) => {
         const path = require('path');
         const excelFilePath = path.join(__dirname, '../../users.xlsx');
 
-        // Check if file exists
         if (!fs.existsSync(excelFilePath)) {
             return res.status(404).json({ error: 'No user data found.' });
         }
 
-        // Set headers for file download
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', 'attachment; filename="library_users.xlsx"');
 
-        // Stream the file
         const fileStream = fs.createReadStream(excelFilePath);
         fileStream.pipe(res);
 
@@ -90,4 +207,11 @@ const downloadUsersExcel = async (req, res) => {
     }
 };
 
-module.exports = { registerUser, getUsers, downloadUsersExcel };
+module.exports = { 
+    registerUser, 
+    sendOTP,
+    verifyUserOTP,
+    completeRegistration,
+    getUsers, 
+    downloadUsersExcel 
+};

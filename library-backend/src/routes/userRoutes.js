@@ -1,9 +1,26 @@
 const express = require('express');
-const { registerUser, getUsers, downloadUsersExcel } = require('../controllers/userController');
+const { 
+    registerUser, 
+    sendOTP, 
+    verifyUserOTP, 
+    completeRegistration,
+    getUsers, 
+    downloadUsersExcel 
+} = require('../controllers/userController');
 
 const router = express.Router();
 
-// POST /api/users/register
+// NEW OTP-based registration flow
+// Step 1: Send OTP to email
+router.post('/send-otp', sendOTP);
+
+// Step 2: Verify OTP
+router.post('/verify-otp', verifyUserOTP);
+
+// Step 3: Complete registration after OTP verification
+router.post('/complete-registration', completeRegistration);
+
+// Legacy endpoint (deprecated)
 router.post('/register', registerUser);
 
 // GET /api/users - Get all registered users
