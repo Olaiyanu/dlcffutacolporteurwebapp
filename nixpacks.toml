@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs"]
+
+[phases.install]
+cmds = ["cd library-backend && npm install --production=false"]
+
+[phases.build]
+cmds = ["cd library-backend && echo 'Backend ready for deployment'"]
+
+[start]
+cmd = "cd library-backend && npm start"
