@@ -5,6 +5,7 @@ const {
     verifyUserOTP, 
     completeRegistration,
     getUsers, 
+    getUsersTable,
     downloadUsersExcel 
 } = require('../controllers/userController');
 
@@ -23,8 +24,11 @@ router.post('/complete-registration', completeRegistration);
 // Legacy endpoint (deprecated)
 router.post('/register', registerUser);
 
-// GET /api/users - Get all registered users
+// GET /api/users - Get all registered users (JSON format)
 router.get('/', getUsers);
+
+// GET /api/users/table - Get users in HTML table format
+router.get('/table', getUsersTable);
 
 // GET /api/users/download - Download users Excel file (Admin endpoint)
 router.get('/download', downloadUsersExcel);
