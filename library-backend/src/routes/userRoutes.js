@@ -22,6 +22,9 @@ router.post('/verify-otp', verifyUserOTP);
 // Step 3: Complete registration after OTP verification
 router.post('/complete-registration', completeRegistration);
 
+// Simple registration without OTP (for direct registration)
+router.post('/register-simple', completeRegistration);
+
 // Check if email/phone already exists (for frontend validation)
 router.get('/check-duplicate', checkDuplicateUser);
 

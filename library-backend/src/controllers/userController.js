@@ -137,8 +137,12 @@ const completeRegistration = async (req, res) => {
         // Save user data to Excel
         await saveUserToExcel(user);
 
-        // Clean up OTP
-        deleteOTP(user.email);
+        // Clean up OTP (safe to call even if no OTP exists)
+        try {
+            deleteOTP(user.email);
+        } catch (otpError) {
+            console.log('OTP cleanup skipped (no OTP to clean):', otpError.message);
+        }
 
         res.status(201).json({ 
             message: 'User registered successfully and library card sent!' 

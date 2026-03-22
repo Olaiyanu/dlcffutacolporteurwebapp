@@ -84,8 +84,8 @@ const Register = () => {
         await logout();
       }
 
-      // Send library card email
-      const response = await fetch(`${API_BASE_URL}/users/complete-registration`, {
+      // Send library card email and complete registration
+      const response = await fetch(`${API_BASE_URL}/users/register-simple`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
